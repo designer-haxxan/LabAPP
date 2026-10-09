@@ -1,20 +1,30 @@
-// Lightweight settings/preferences stored in LocalStorage (never operational data or secrets).
+// Lab profile and preferences stored in LocalStorage (never operational data or secrets).
 import { storageKey } from '../config.js';
 
-const KEY = storageKey('settings');
-const LEGACY_KEY = 'pos.settings'; // shared by older builds on the same origin; copied once as a starting point
+const KEY = storageKey('labsettings');
+
+export const DEFAULT_EXPENSE_CATEGORIES = [
+  'Rent', 'Electricity', 'Gas & Water', 'Salaries', 'Reagents & Kits', 'Consumables',
+  'Equipment Repair', 'Maintenance & Cleaning', 'Transport', 'Internet & Phone', 'Printing & Stationery', 'Other',
+];
 
 export const DEFAULT_SETTINGS = {
-  business: { name: 'My Store', address: '', phone: '', taxNo: '', footer: 'Thank you for your purchase!' },
+  lab: {
+    name: 'My Diagnostic Lab',
+    tagline: 'Accurate results you can trust',
+    address: '',
+    phone: '',
+    email: '',
+    license: '',
+    reportFooter: 'This is a computer-generated report. Results should be correlated clinically.',
+    signatory: 'Lab Supervisor',
+  },
   currency: 'Rs',
-  taxEnabled: false,
-  taxRate: 0,
-  allowNegativeStock: false,
-  updatePurchasePrice: true,
-  prefixes: { sale: 'SALE', purchase: 'PUR', saleReturn: 'SRN', purchaseReturn: 'PRN', receipt: 'RCV', payment: 'PAY', transfer: 'TRF', adjustment: 'ADJ' },
-  printer: { method: 'browser', width: 58, autoPrint: false, copies: 1, chunkSize: 20, imageMode: 'gsv0', deviceName: '', deviceId: '' },
+  taxRate: 0,              // percent added to bills (0 = no tax)
+  defaultCommission: 0,    // default referral commission % for new doctors
+  prefixes: { bill: 'LAB', mr: 'MR' },
+  expenseCategories: DEFAULT_EXPENSE_CATEGORIES,
   theme: 'auto',
-  register: 'Main',
 };
 
 function merge(base, over) {
@@ -30,7 +40,7 @@ let cache = null;
 export function getSettings() {
   if (!cache) {
     let stored = {};
-    try { stored = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY) || '{}'); } catch { stored = {}; }
+    try { stored = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { stored = {}; }
     cache = merge(DEFAULT_SETTINGS, stored);
   }
   return cache;
@@ -47,17 +57,18 @@ export function replaceSettings(all) {
   cache = merge(DEFAULT_SETTINGS, all || {});
   localStorage.setItem(KEY, JSON.stringify(cache));
   document.dispatchEvent(new CustomEvent('settings:changed', { detail: cache }));
+  return cache;
 }
 
 // Small per-device preference helpers
 export const pref = {
   get(k, d = null) { try { const v = localStorage.getItem(storageKey('pref.' + k)); return v === null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { localStorage.setItem(storageKey('pref.' + k), JSON.stringify(v)); },
+  set(k, v) { try { localStorage.setItem(storageKey('pref.' + k), JSON.stringify(v)); } catch { /* storage full or blocked */ } },
 };
 
 export function applyTheme() {
   const t = getSettings().theme;
   const dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f1117' : '#f4f5fb');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f1117' : '#4f46e5');
 }

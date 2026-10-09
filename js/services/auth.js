@@ -19,11 +19,13 @@ const ERRORS = {
 };
 const GENERIC = 'Login failed. Try again.';
 
-export const ROLES = { admin: 'Owner', manager: 'Manager', cashier: 'Cashier' };
+export const ROLES = { admin: 'Owner', manager: 'Manager', cashier: 'Receptionist' };
 
-const CASHIER = ['sale.create', 'party.edit', 'voucher.create', 'reports.view'];
-const MANAGER = [...CASHIER, 'sale.edit', 'sale.void', 'sale.return', 'purchase.manage', 'product.edit', 'product.delete',
-  'party.delete', 'voucher.void', 'account.manage', 'stock.adjust', 'reports.profit', 'settings.manage', 'backup.export'];
+// Receptionist: register patients, bill tests, collect payments, enter results.
+const CASHIER = ['bill.create', 'patient.edit', 'payment.collect', 'results.enter', 'reports.view'];
+// Manager: adds catalog, doctors, expenses, supplies, verification, voids and finance reports.
+const MANAGER = [...CASHIER, 'bill.void', 'results.verify', 'catalog.manage', 'doctor.manage', 'expense.manage',
+  'supply.manage', 'reports.finance', 'settings.manage', 'backup.export'];
 const PERMISSIONS = { cashier: CASHIER, manager: MANAGER, admin: ['*'] };
 
 let current = null;
@@ -42,7 +44,7 @@ function readSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
 }
 
-// The API identifies a shop account by username; that account owns all POS functions on its device.
+// The API identifies the lab account by username; that account owns all functions on its device.
 // If the server ever includes a known `role`, it is honoured.
 function toUser(s) {
   return { id: s.username, name: s.username, username: s.username, role: PERMISSIONS[s.role] ? s.role : 'admin' };

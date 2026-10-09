@@ -1,20 +1,45 @@
-/* Service worker: precaches the app shell and CDN libraries so the POS loads fully offline.
+/* Service worker: precaches the app shell and CDN libraries so the app loads fully offline.
    Bump VERSION whenever any cached file changes; clients update automatically. */
 // Cache names are namespaced: other apps on designer-haxxan.github.io share Cache Storage with this one.
 const APP_ID = 'disterp';
-const VERSION = `${APP_ID}-v1.3.2`;
+const VERSION = `${APP_ID}-lab-v2.0.0`;
 const isOwnCache = (key) => key.startsWith(`${APP_ID}-`) || /^saleapp-v/.test(key); // saleapp-v* = this app's older builds
 const SHELL = [
-  './', './index.html', './manifest.json', './css/app.css',
-  './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png',
-  './js/app.js', './js/config.js',
-  './js/core/link-login.js', './js/core/settings.js', './js/core/ui.js', './js/core/utils.js', './js/core/views.js',
-  './js/db/idb.js', './js/db/schema.js',
-  './js/modules/accounts.js', './js/modules/backup.js', './js/modules/dashboard.js', './js/modules/documents.js',
-  './js/modules/parties.js', './js/modules/pos.js', './js/modules/products.js', './js/modules/settings.js', './js/modules/stock.js', './js/modules/vouchers.js',
-  './js/printer/escpos.js', './js/printer/printer.js', './js/printer/raster.js', './js/printer/receipt.js',
-  './js/reports/reports.js', './js/scanner/scanner.js',
-  './js/services/auth.js', './js/services/backup.js', './js/services/catalog.js', './js/services/posting.js',
+  './',
+  './index.html',
+  './manifest.json',
+  './css/app.css',
+  './css/lab.css',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/maskable-512.png',
+  './icons/apple-touch-icon.png',
+  './icons/favicon-32.png',
+  './js/app.js',
+  './js/config.js',
+  './js/core/badges.js',
+  './js/core/link-login.js',
+  './js/core/print.js',
+  './js/core/settings.js',
+  './js/core/ui.js',
+  './js/core/utils.js',
+  './js/core/views.js',
+  './js/db/idb.js',
+  './js/db/schema.js',
+  './js/modules/backup.js',
+  './js/modules/billing.js',
+  './js/modules/catalog.js',
+  './js/modules/dashboard.js',
+  './js/modules/doctors.js',
+  './js/modules/expenses.js',
+  './js/modules/patients.js',
+  './js/modules/reports.js',
+  './js/modules/results.js',
+  './js/modules/settings.js',
+  './js/modules/supplies.js',
+  './js/services/auth.js',
+  './js/services/data.js',
+  './js/services/seed.js',
 ];
 const CDN = [
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css',
@@ -56,7 +81,7 @@ async function precache() {
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     await precache();
-    // Activate new versions immediately; open pages reload on controllerchange (POS carts are kept as drafts).
+    // Activate new versions immediately; open pages reload on controllerchange.
     await self.skipWaiting();
   })());
 });

@@ -1,129 +1,106 @@
-// Backup & Restore UI.
+// Backup & restore: one JSON file with every record and the lab settings. Import validates everything
+// (format, versions, record counts and checksum) before any data changes, then replaces in one transaction.
 import * as UI from '../core/ui.js';
-import { esc, fmtDateTime, downloadFile } from '../core/utils.js';
-import { pref } from '../core/settings.js';
+import { esc, fmtDateTime, today, downloadFile } from '../core/utils.js';
+import { getSettings, saveSettings, pref } from '../core/settings.js';
+import { CONFIG } from '../config.js';
+import { DATA_STORES } from '../db/schema.js';
+import { exportAll, replaceAll } from '../services/data.js';
 import * as Auth from '../services/auth.js';
-import * as Backup from '../services/backup.js';
 
 const $ = window.jQuery;
+const FORMAT = 'labcare-backup';
 
-export async function downloadBackup() {
-  const b = await UI.withLoading(() => Backup.createBackup(), 'Preparing backup…');
-  const stamp = b.createdAt.replace(/[:.]/g, '-').slice(0, 19);
-  downloadFile(`saleapp-backup-${stamp}.json`, JSON.stringify(b), 'application/json');
-  pref.set('lastBackupAt', b.createdAt);
-  return b;
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-const LABELS = {
-  products: 'Products', categories: 'Categories', customers: 'Customers', suppliers: 'Suppliers', accounts: 'Accounts', sales: 'Sales', saleItems: 'Sale items',
-  purchases: 'Purchases', purchaseItems: 'Purchase items', saleReturns: 'Sale returns', purchaseReturns: 'Purchase returns', vouchers: 'Payments / vouchers',
-  entries: 'Ledger entries', stockMoves: 'Stock movements', adjustments: 'Stock adjustments', holds: 'Held sales', auditLog: 'Activity log', meta: 'Counters / metadata',
-};
+// Stores restored from a backup. Counters live in meta, so numbering continues where it stopped.
+const countsOf = (data) => Object.fromEntries(DATA_STORES.filter((s) => s !== 'meta').map((s) => [s, (data[s] || []).length]));
 
-// Offer to import data from the old shared database (see services/backup.js).
-async function showLegacy($box) {
-  const old = await Backup.readLegacyData();
-  if (!old) return;
-  const c = old.counts;
-  const rows = ['products', 'customers', 'suppliers', 'sales', 'purchases', 'saleReturns', 'vouchers', 'adjustments']
-    .filter((k) => c[k]).map((k) => `<div class="list-row py-1"><div class="main">${esc(LABELS[k] || k)}</div><div class="end">${c[k]}</div></div>`).join('');
-  $box.html(`<div class="card border-warning"><div class="card-body">
-    <h2 class="h6"><i class="bi bi-database-exclamation me-2"></i>Data from an older version found</h2>
-    <p class="small mb-2">Older versions stored data in a database shared by all apps on <b>${esc(location.host)}</b>
-      (for example AgriSale or pharmaSaleApp). This app now keeps its own separate database. The data below may belong to
-      this app or to one of the others — import it only if it is yours. The old database is not changed.</p>
-    <div class="list-card mb-3 small">${rows}</div>
-    <div class="d-flex flex-wrap gap-2">
-      <button class="btn btn-warning btn-legacy-import"><i class="bi bi-box-arrow-in-down me-1"></i>Import into this app</button>
-      <button class="btn btn-outline-secondary btn-legacy-hide">Don't show again</button>
-    </div></div></div>`);
-  $box.on('click', '.btn-legacy-hide', () => { pref.set('legacyHandled', true); $box.empty(); });
-  $box.on('click', '.btn-legacy-import', async () => {
-    if (!await UI.confirmDialog('Merge the old data into this app? Records that already exist here are kept; missing ones are added.', { okLabel: 'Import' })) return;
+let pending = null; // file that passed every check, waiting for the owner to type REPLACE
+
+export async function render(el, ctx) {
+  ctx.setTitle?.('Backup & Restore');
+  el.innerHTML = `
+    <div class="page-header d-flex align-items-center gap-2 mb-3"><h1 class="h5 mb-0 flex-grow-1">Backup &amp; Restore</h1></div>
+    <div class="row g-3">
+      <div class="col-md-6"><section class="card-glow panel h-100">
+        <div class="panel-title"><i class="bi bi-cloud-arrow-down me-2"></i>Export backup</div>
+        <p class="small text-body-secondary">Downloads one file with all patients, bills, payments, results, tests, doctors, expenses, supplies and settings. Keep it somewhere safe. Login passwords are never included.</p>
+        <button class="btn btn-grad" id="do-export"><i class="bi bi-download me-1"></i>Download backup</button>
+      </section></div>
+      <div class="col-md-6"><section class="card-glow panel h-100">
+        <div class="panel-title"><i class="bi bi-cloud-arrow-up me-2"></i>Restore from file</div>
+        <p class="small text-body-secondary">Replaces all data on this device with the backup. The file is checked first. Make a backup of the current data before restoring.</p>
+        <input type="file" class="form-control" id="restore-file" accept="application/json,.json">
+        <div id="restore-preview" class="mt-3"></div>
+      </section></div>
+    </div>`;
+  $(el).on('click', '#do-export', async () => {
     try {
-      const r = await UI.withLoading(() => Backup.restore(old, 'merge'), 'Importing…');
-      pref.set('legacyHandled', true);
-      UI.toast(`Imported: ${r.added} added, ${r.updated} updated`);
-      if (r.conflicts.length) await UI.confirmDialog(`<p>${r.conflicts.length} record(s) were skipped because of number conflicts:</p><div class="small">${r.conflicts.slice(0, 30).map(esc).join('<br>')}</div>`, { html: true, title: 'Import conflicts', okLabel: 'OK' });
-      location.hash = '#/dashboard';
+      const data = await UI.withLoading(() => exportAll(DATA_STORES), 'Preparing backup…');
+      const body = { format: FORMAT, backupVersion: CONFIG.BACKUP_VERSION, appVersion: CONFIG.APP_VERSION, schemaVersion: CONFIG.SCHEMA_VERSION,
+        createdAt: new Date().toISOString(), createdBy: Auth.user()?.username || '', counts: countsOf(data), settings: getSettings(), data };
+      body.checksum = await sha256(JSON.stringify(data));
+      downloadFile(`labcare-backup-${today()}.json`, JSON.stringify(body), 'application/json');
+      pref.set('lastBackup', body.createdAt);
+      UI.toast('Backup downloaded');
     } catch (e) { UI.toastError(e); }
+  });
+  $(el).on('input', '#restore-confirm', function () { $('#do-restore', el).prop('disabled', this.value.trim() !== 'REPLACE'); });
+  $(el).on('click', '#do-restore', async () => {
+    if (!pending || !Auth.can('backup.export')) return UI.toast('Not allowed for this account', 'warning');
+    const { body } = pending;
+    try {
+      await UI.withLoading(() => replaceAll(DATA_STORES, body.data), 'Restoring…');
+      if (body.settings) saveSettings(body.settings);
+      pending = null;
+      UI.toast('Backup restored');
+      location.hash = '#/dashboard';
+      location.reload();
+    } catch (e) { UI.toastError(e); }
+  });
+  $(el).on('change', '#restore-file', async function () {
+    const file = this.files?.[0];
+    if (!file) return;
+    try {
+      pending = await readAndCheck(file);
+      showPreview(el, pending);
+    } catch (e) { UI.toastError(e); this.value = ''; $('#restore-preview', el).empty(); }
   });
 }
 
-export default {
-  async render(el) {
-    const $el = $(el);
-    const canRestore = Auth.can('backup.restore');
-    const last = pref.get('lastBackupAt');
-    $el.html(UI.pageHeader('Backup & Restore') + `
-      <div class="row g-3">
-        <div class="col-lg-6"><div class="card h-100"><div class="card-body">
-          <h2 class="h6"><i class="bi bi-cloud-arrow-down me-2"></i>Export backup</h2>
-          <p class="small text-body-secondary">Downloads a complete JSON backup of all POS data on this device: products, customers, suppliers, accounts, sales, purchases, returns, payments, stock movements, ledger and settings. Passwords and login credentials are <b>never</b> included.</p>
-          <div class="small mb-3">Last backup on this device: <b>${last ? fmtDateTime(last) : 'never'}</b></div>
-          <button class="btn btn-primary btn-export"><i class="bi bi-download me-1"></i>Download backup</button>
-        </div></div></div>
-        <div class="col-lg-6"><div class="card h-100"><div class="card-body">
-          <h2 class="h6"><i class="bi bi-cloud-arrow-up me-2"></i>Restore backup</h2>
-          ${canRestore ? `<p class="small text-body-secondary">Select a backup file. It is validated before anything changes; you will see its date and record counts and must confirm.</p>
-            <input type="file" accept="application/json,.json" class="form-control file">
-            <div class="preview mt-3"></div>` : '<div class="alert alert-secondary small mb-0">Only administrators can restore backups.</div>'}
-        </div></div></div>
-      </div>
-      <div class="legacy mt-3"></div>`);
-    if (canRestore && pref.get('legacyHandled') !== true) showLegacy($el.find('.legacy'));
-    $el.on('click', '.btn-export', async () => {
-      try { const b = await downloadBackup(); UI.toast('Backup downloaded'); $el.find('.card-body b').first().text(fmtDateTime(b.createdAt)); } catch (e) { UI.toastError(e); }
-    });
-    let obj = null;
-    $el.on('change', '.file', async function () {
-      const f = this.files[0];
-      const $p = $el.find('.preview').html(UI.spinner('Validating…'));
-      obj = null;
-      if (!f) return $p.empty();
-      try {
-        if (f.size > 500 * 1024 * 1024) throw new Error('File is too large.');
-        let parsed;
-        try { parsed = JSON.parse(await f.text()); } catch { throw new Error('The file is not valid JSON (it may be corrupted).'); }
-        const v = Backup.validateBackup(parsed);
-        const sumOk = v.ok ? await Backup.verifyChecksum(parsed) : null;
-        if (sumOk === false) v.errors.push('Checksum mismatch: the backup data was modified or corrupted.');
-        const ok = v.ok && sumOk !== false;
-        $p.html(`<div class="alert ${ok ? 'alert-success' : 'alert-danger'} py-2 small">${ok ? '<i class="bi bi-check-circle me-1"></i>Backup is valid.' : '<i class="bi bi-x-octagon me-1"></i>This backup cannot be restored.'}
-            ${v.errors.map((e) => `<div>• ${esc(e)}</div>`).join('')}${v.warnings.map((w) => `<div class="text-warning-emphasis">• ${esc(w)}</div>`).join('')}</div>
-          ${v.counts ? `<div class="small mb-2">Created: <b>${esc(fmtDateTime(v.createdAt))}</b> · App ${esc(v.appVersion || '?')}${v.createdBy ? ` · by ${esc(v.createdBy.name)}` : ''}${sumOk ? ' · checksum verified' : ''}</div>
-          <div class="list-card mb-3 small">${Object.entries(v.counts).filter(([, n]) => n).map(([k, n]) => `<div class="list-row py-1"><div class="main">${esc(LABELS[k] || k)}</div><div class="end">${n}</div></div>`).join('')}</div>` : ''}
-          ${ok ? `<div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="safety" checked><label class="form-check-label small" for="safety">Download a backup of the current data first (recommended)</label></div>
-          <div class="d-grid gap-2">
-            <button class="btn btn-outline-primary btn-merge"><i class="bi bi-intersect me-1"></i>Merge into local data</button>
-            <button class="btn btn-danger btn-replace"><i class="bi bi-arrow-repeat me-1"></i>Replace all local data</button>
-          </div>
-          <div class="form-text">Merge adds records that are missing and updates records that are newer in the backup. Replace erases all POS data on this device and loads the backup.</div>` : ''}`);
-        if (ok) obj = parsed;
-      } catch (e) { $p.html(UI.errorState(e)); }
-    });
-    const doRestore = async (mode) => {
-      if (!obj) return;
-      const msg = mode === 'replace'
-        ? '<p>This will <b>erase all POS data on this device</b> and replace it with the backup. This cannot be undone.</p><label class="form-label small">Type <b>REPLACE</b> to confirm</label><input class="form-control confirm-text">'
-        : '<p>Records from the backup will be merged into the local data. Existing newer records are kept.</p>';
-      let typed = '';
-      const m = UI.confirmDialog(msg, { html: true, okLabel: mode === 'replace' ? 'Replace data' : 'Merge', okClass: mode === 'replace' ? 'btn-danger' : 'btn-primary', title: mode === 'replace' ? 'Replace all data?' : 'Merge backup?' });
-      $(document).on('input.confirmtext', '.confirm-text', function () { typed = this.value; });
-      const ok = await m;
-      $(document).off('input.confirmtext');
-      if (!ok) return;
-      if (mode === 'replace' && typed.trim().toUpperCase() !== 'REPLACE') { UI.toast('Restore cancelled: confirmation text did not match.', 'warning'); return; }
-      try {
-        if ($el.find('#safety').prop('checked')) await downloadBackup();
-        const r = await UI.withLoading(() => Backup.restore(obj, mode), 'Restoring data…');
-        UI.toast(mode === 'replace' ? 'Backup restored' : `Merged: ${r.added} added, ${r.updated} updated, ${r.skipped} unchanged`);
-        if (r.conflicts.length) await UI.confirmDialog(`<p>${r.conflicts.length} record(s) were skipped because of number conflicts:</p><div class="small">${r.conflicts.slice(0, 30).map(esc).join('<br>')}</div>`, { html: true, title: 'Merge conflicts', okLabel: 'OK' });
-        location.hash = '#/dashboard';
-      } catch (e) { UI.toastError(e); }
-    };
-    $el.on('click', '.btn-merge', () => doRestore('merge'));
-    $el.on('click', '.btn-replace', () => doRestore('replace'));
-  },
-};
+// Reads the file and runs every check. Throws a readable error; never changes local data.
+async function readAndCheck(file) {
+  if (file.size > 60 * 1024 * 1024) throw new Error('This file is too large to be a lab backup.');
+  let raw; let body;
+  try { raw = await file.text(); body = JSON.parse(raw); } catch { throw new Error('This file is not a valid backup (it is not readable JSON).'); }
+  if (body?.format !== FORMAT) throw new Error('This is not a LabCare backup file.');
+  if (body.backupVersion !== CONFIG.BACKUP_VERSION) throw new Error(`Backup version ${body.backupVersion} is not supported by this app.`);
+  if (Number(body.schemaVersion) > CONFIG.SCHEMA_VERSION) throw new Error('This backup was made by a newer version of the app. Update the app first.');
+  const data = body.data;
+  if (!data || typeof data !== 'object') throw new Error('The backup has no data section.');
+  for (const s of DATA_STORES) {
+    if (!Array.isArray(data[s])) throw new Error(`The backup is missing "${s}".`);
+    for (const rec of data[s]) if (s !== 'meta' && (!rec || typeof rec.id !== 'string')) throw new Error(`A record in "${s}" has no id.`);
+  }
+  const counts = countsOf(data);
+  for (const [s, n] of Object.entries(counts)) {
+    if (body.counts?.[s] !== undefined && body.counts[s] !== n) throw new Error(`Record count mismatch in "${s}" (file may be truncated).`);
+  }
+  if (body.checksum !== await sha256(JSON.stringify(data))) throw new Error('Checksum failed: the file was changed or damaged.');
+  return { body, counts };
+}
+
+async function showPreview(el, { body, counts }) {
+  const cur = Object.fromEntries(Object.entries(await exportAll(DATA_STORES.filter((s) => s !== 'meta'))).map(([s, v]) => [s, v.length]));
+  const rows = Object.keys(counts).filter((s) => s !== 'auditLog').map((s) => `<tr><td class="text-capitalize">${esc(s.replace(/([A-Z])/g, ' $1'))}</td><td class="num">${cur[s] ?? 0}</td><td class="num fw-semibold">${counts[s]}</td></tr>`).join('');
+  $('#restore-preview', el).html(`
+    <div class="alert alert-success small py-2">Backup is valid. Created ${esc(fmtDateTime(body.createdAt))} by ${esc(body.createdBy || 'unknown')}.</div>
+    <table class="table table-sm mb-3"><thead><tr><th>Records</th><th class="num">On this device</th><th class="num">In backup</th></tr></thead><tbody>${rows}</tbody></table>
+    <label class="form-label small">Type <b>REPLACE</b> to confirm</label>
+    <div class="d-flex gap-2"><input class="form-control" id="restore-confirm" autocomplete="off">
+      <button class="btn btn-danger" id="do-restore" disabled>Restore</button></div>`);
+}

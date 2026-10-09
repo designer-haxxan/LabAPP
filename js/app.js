@@ -5,29 +5,24 @@ import * as UI from './core/ui.js';
 import { esc } from './core/utils.js';
 import { openDB } from './db/idb.js';
 import * as Auth from './services/auth.js';
-import * as Catalog from './services/catalog.js';
+import { seedCatalog } from './services/seed.js';
 
 const $ = window.jQuery;
 
 // Route table: name → [loader, title, permission|null, icon, menu section]
 const ROUTES = {
-  dashboard: [() => import('./modules/dashboard.js'), 'Dashboard', null, 'house', 'Main'],
-  pos: [() => import('./modules/pos.js'), 'New Sale', 'sale.create', 'cart-plus', 'Main'],
-  sales: [() => import('./modules/documents.js'), 'Sales', null, 'receipt', 'Main'],
-  purchase: [() => import('./modules/pos.js'), 'New Purchase', 'purchase.manage', null, null],
-  purchases: [() => import('./modules/documents.js'), 'Purchases', 'purchase.manage', 'bag', 'Main'],
-  returns: [() => import('./modules/documents.js'), 'Returns', null, 'arrow-return-left', 'Main'],
-  products: [() => import('./modules/products.js'), 'Products', null, 'box-seam', 'Inventory'],
-  stock: [() => import('./modules/stock.js'), 'Stock', null, 'boxes', 'Inventory'],
-  customers: [() => import('./modules/parties.js'), 'Customers', null, 'people', 'Parties'],
-  suppliers: [() => import('./modules/parties.js'), 'Suppliers', 'purchase.manage', 'truck', 'Parties'],
-  vouchers: [() => import('./modules/vouchers.js'), 'Cash Book & Payments', 'voucher.create', 'cash-coin', 'Accounts'],
-  accounts: [() => import('./modules/accounts.js'), 'Accounts', 'account.manage', 'bank', 'Accounts'],
-  reports: [() => import('./reports/reports.js'), 'Reports', 'reports.view', 'bar-chart-line', 'Accounts'],
+  dashboard: [() => import('./modules/dashboard.js'), 'Dashboard', null, 'speedometer2', 'Main'],
+  bills: [() => import('./modules/billing.js'), 'Billing', null, 'receipt', 'Main'],
+  patients: [() => import('./modules/patients.js'), 'Patients', null, 'person-vcard', 'Main'],
+  results: [() => import('./modules/results.js'), 'Results & Reports', null, 'clipboard2-pulse', 'Main'],
+  catalog: [() => import('./modules/catalog.js'), 'Tests & Packages', null, 'test-tube', 'Lab Setup'],
+  doctors: [() => import('./modules/doctors.js'), 'Referring Doctors', null, 'heart-pulse', 'Lab Setup'],
+  supplies: [() => import('./modules/supplies.js'), 'Supplies & Stock', null, 'boxes', 'Lab Setup'],
+  expenses: [() => import('./modules/expenses.js'), 'Expenses', 'expense.manage', 'wallet2', 'Finance'],
+  reports: [() => import('./modules/reports.js'), 'Reports', 'reports.view', 'bar-chart-line', 'Finance'],
   backup: [() => import('./modules/backup.js'), 'Backup & Restore', 'backup.export', 'cloud-arrow-down', 'Administration'],
   settings: [() => import('./modules/settings.js'), 'Settings', null, 'gear', 'Administration'],
 };
-const FOCUS_ROUTES = new Set(['pos', 'purchase']);
 
 let currentModule = null;
 let routeToken = 0;
@@ -79,7 +74,6 @@ export async function promptInstall() {
   deferredInstall = null; $('#install-btn').addClass('d-none');
   return true;
 }
-export const canInstall = () => !!deferredInstall;
 
 // ---------- Connection badge ----------
 function renderConn(status) {
@@ -104,8 +98,8 @@ function buildMenu() {
   $('#user-name').text(u.name);
   $('#user-role').text(Auth.ROLES[u.role] || u.role);
   $('#user-avatar').text(UI.initials(u.name));
-  $('#brand-name').text(getSettings().business.name || CONFIG.APP_NAME);
-  $('#bottom-nav [data-route="pos"]').toggleClass('d-none', !Auth.can('sale.create'));
+  $('#brand-name').text(getSettings().lab.name || CONFIG.APP_NAME);
+  $('#bottom-nav [data-route="bills-new"]').toggleClass('d-none', !Auth.can('bill.create'));
 }
 
 async function route() {
@@ -120,13 +114,15 @@ async function route() {
   bootstrap.Offcanvas.getInstance('#menu-offcanvas')?.hide();
   $('.nav-menu .nav-link, #bottom-nav a').removeClass('active');
   $(`.nav-menu [data-route="${name}"], #bottom-nav [data-route="${name}"]`).addClass('active');
-  $('body').toggleClass('focus-mode', FOCUS_ROUTES.has(name));
+  // The "new bill" shortcut is highlighted on the billing page only when it is open.
+  if (name === 'bills' && parts[1] === 'new') $('#bottom-nav [data-route="bills-new"]').addClass('active');
   $('#topbar-title').text(title);
   const $c = $('#content').off();
   if (perm && !Auth.can(perm)) { $c.html(UI.emptyState('You do not have permission to open this page.', 'shield-lock')); return; }
   $c.html(UI.spinner());
   try {
-    const mod = (await loader()).default;
+    // Each module exports render() (and optionally destroy()) by name.
+    const mod = await loader();
     if (token !== routeToken) return;
     currentModule = mod;
     window.scrollTo(0, 0);
@@ -141,7 +137,8 @@ async function route() {
 
 // ---------- Auth gate ----------
 async function startApp() {
-  await Catalog.load();
+  // Adds the Pakistan starter catalog on first run (existing records are never changed).
+  try { await seedCatalog(); } catch (e) { console.warn('Catalog seed skipped:', e); }
   buildMenu();
   showView('app');
   renderConn(navigator.onLine ? 'online' : 'offline');
@@ -152,7 +149,7 @@ async function startApp() {
 }
 
 async function doLogout(forced = false, reason = '') {
-  if (!forced && !await UI.confirmDialog('Log out of this device? Your POS data stays on this device, but signing in again requires an internet connection.', { okLabel: 'Log out', okClass: 'btn-danger' })) return;
+  if (!forced && !await UI.confirmDialog('Log out of this device? Your lab data stays on this device, but signing in again requires an internet connection.', { okLabel: 'Log out', okClass: 'btn-danger' })) return;
   clearInterval(expiryTimer);
   try { currentModule?.destroy?.(); } catch { /* ignore */ }
   currentModule = null;
@@ -200,8 +197,7 @@ $('#toggle-pw').on('click', () => {
 $('#logout-btn').on('click', () => doLogout(false));
 $('#install-btn').on('click', promptInstall);
 window.addEventListener('hashchange', route);
-document.addEventListener('settings:changed', () => { applyTheme(); if (Auth.user()) $('#brand-name').text(getSettings().business.name || CONFIG.APP_NAME); });
-document.addEventListener('auth:changed', () => { if (Auth.user()) buildMenu(); });
+document.addEventListener('settings:changed', () => { applyTheme(); if (Auth.user()) $('#brand-name').text(getSettings().lab.name || CONFIG.APP_NAME); });
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 
 // ---------- Boot ----------
