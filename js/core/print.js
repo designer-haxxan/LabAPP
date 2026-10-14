@@ -3,12 +3,14 @@
 import { esc, fmtDate } from './utils.js';
 import { getSettings } from './settings.js';
 
-export function labHeader() {
+// note (optional) is printed in the letterhead, above the address.
+export function labHeader(note = '') {
   const { lab } = getSettings();
   return `<header class="pr-head">
       <div class="pr-brand">
         <div class="pr-name">${esc(lab.name)}</div>
         ${lab.tagline ? `<div class="pr-tag">${esc(lab.tagline)}</div>` : ''}
+        ${note ? `<div class="pr-note">${esc(note)}</div>` : ''}
         ${lab.address ? `<div class="pr-small">${esc(lab.address)}</div>` : ''}
         <div class="pr-small">${[lab.phone && `Tel: ${esc(lab.phone)}`, lab.email && esc(lab.email), lab.license && `Lic: ${esc(lab.license)}`].filter(Boolean).join(' · ')}</div>
       </div>

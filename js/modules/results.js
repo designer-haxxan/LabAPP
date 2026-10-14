@@ -166,7 +166,7 @@ function reportSheet(r, bill) {
     return `<tr><td>${esc(p.name)}</td><td class="r">${shown}</td><td>${esc(p.unit || '')}</td><td>${esc(refText(p, patient) || '')}</td><td class="c">${f ? `<b>${f === 'N' ? '' : f}</b>` : ''}</td></tr>`;
   }).join('');
   return `<section class="pr-page">
-    ${labHeader()}
+    ${labHeader(lab.reportFooter)}
     ${prelim ? '<div class="pr-watermark">PRELIMINARY</div>' : ''}
     <div class="pr-title">LABORATORY REPORT · ${esc(r.testName.toUpperCase())}</div>
     <table class="pr-meta"><tr><td>Patient</td><td><b>${esc(patient.name || '')}</b></td><td>MR no.</td><td>${esc(patient.mrNo || '')}</td></tr>
@@ -175,8 +175,7 @@ function reportSheet(r, bill) {
       <tr><td>Sample</td><td>${esc(r.sampleType || '—')}</td><td>Department</td><td>${esc(r.department)}</td></tr></table>
     ${r.params.length ? `<table class="pr-items"><thead><tr><th>Parameter</th><th class="r">Result</th><th>Unit</th><th>Reference</th><th class="c">Flag</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No values entered</td></tr>'}</tbody></table>` : ''}
     ${r.remarks ? `<div class="pr-remarks"><b>${r.params.length ? 'Interpretation' : 'Result'}:</b> ${esc(r.remarks).replace(/\n/g, '<br>')}</div>` : ''}
-    <div class="pr-sign"><div><span></span>${esc(r.enteredBy ? 'Entered by ' + r.enteredBy : '')}</div>
-      <div><span></span>${esc(r.verifiedBy ? 'Verified by ' + r.verifiedBy : lab.signatory)}</div></div>
-    <p class="pr-small pr-center">${esc(lab.reportFooter || '')}</p>
+    <div class="pr-sign"><div>${esc(r.enteredBy ? 'Entered by ' + r.enteredBy : '')}</div>
+      <div>${esc(r.verifiedBy ? 'Verified by ' + r.verifiedBy : lab.signatory)}</div></div>
   </section>`;
 }
