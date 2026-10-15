@@ -3,7 +3,7 @@
 import * as UI from '../core/ui.js';
 import { esc, fmtDate, debounce } from '../core/utils.js';
 import { getSettings } from '../core/settings.js';
-import { labHeader, printHtml } from '../core/print.js';
+import { printHtml } from '../core/print.js';
 import { reportBadge, flagBadge, genderLabel, countPill } from '../core/badges.js';
 import { getBundle, saveResults, reopenReport, flagFor, refText } from '../services/data.js';
 import * as Auth from '../services/auth.js';
@@ -165,10 +165,12 @@ function reportSheet(r, bill) {
     const shown = f === 'H' || f === 'L' ? `<b>${esc(v)}</b>` : esc(v);
     return `<tr><td>${esc(p.name)}</td><td class="r">${shown}</td><td>${esc(p.unit || '')}</td><td>${esc(refText(p, patient) || '')}</td><td class="c">${f ? `<b>${f === 'N' ? '' : f}</b>` : ''}</td></tr>`;
   }).join('');
-  return `<section class="pr-page">
-    ${labHeader(lab.reportFooter)}
+  // The letterhead image (lab name, address, footer bar) is the page design; the report text sits inside its frame.
+  return `<section class="pr-page pr-lh">
+    <img class="pr-lh-bg" src="assets/letterhead.png" alt="">
     ${prelim ? '<div class="pr-watermark">PRELIMINARY</div>' : ''}
     <div class="pr-title">LABORATORY REPORT · ${esc(r.testName.toUpperCase())}</div>
+    ${lab.reportFooter ? `<div class="pr-note">${esc(lab.reportFooter)}</div>` : ''}
     <table class="pr-meta"><tr><td>Patient</td><td><b>${esc(patient.name || '')}</b></td><td>MR no.</td><td>${esc(patient.mrNo || '')}</td></tr>
       <tr><td>Age / Gender</td><td>${patient.age !== '' && patient.age != null ? esc(patient.age) + ' yrs' : '—'} / ${esc(genderLabel(patient.gender) || '—')}</td><td>Bill no.</td><td>${esc(r.billNumber)}</td></tr>
       <tr><td>Referred by</td><td>${bill?.doctorName ? esc(bill.doctorName) : 'Self'}</td><td>Report date</td><td>${esc(fmtDate(r.date))}</td></tr>
