@@ -203,6 +203,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', a
 // ---------- Boot ----------
 (async function boot() {
   applyTheme();
+  $('#app-version').text(`Version ${CONFIG.APP_VERSION}`);
   registerSW();
   if (!window.jQuery || !window.bootstrap) return fatal('Required libraries failed to load. Connect to the internet once so the app can be cached for offline use.');
   try { await openDB(); } catch (e) { return fatal('Could not open the local database: ' + (e.message || e)); }
