@@ -2,7 +2,7 @@
    Bump VERSION whenever any cached file changes; clients update automatically. */
 // Cache names are namespaced: other apps on designer-haxxan.github.io share Cache Storage with this one.
 const APP_ID = 'disterp';
-const VERSION = `${APP_ID}-lab-v2.0.5`;
+const VERSION = `${APP_ID}-lab-v2.0.6`;
 const isOwnCache = (key) => key.startsWith(`${APP_ID}-`) || /^saleapp-v/.test(key); // saleapp-v* = this app's older builds
 const SHELL = [
   './',
@@ -108,12 +108,20 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
 
+  // Network first: when online, the app always loads the newest files (revalidated with the server, not the
+  // browser's HTTP cache). The cached copy is used only when the device is offline. This makes an update
+  // visible on the next reload, even in browsers that installed an earlier version.
   if (req.mode === 'navigate' && url.origin === self.location.origin) {
-    // App shell: serve the cached index.html of this version (works offline). New versions arrive via a new service worker.
     event.respondWith((async () => {
-      const cached = await caches.match('./index.html', { cacheName: VERSION });
-      if (cached) return cached;
-      try { return await fetch(req); } catch (e) { return new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } }); }
+      const cache = await caches.open(VERSION);
+      try {
+        const res = await fetch(req, { cache: 'no-cache' });
+        if (res.ok) cache.put('./index.html', res.clone());
+        return res;
+      } catch (e) {
+        const cached = await cache.match('./index.html');
+        return cached || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+      }
     })());
     return;
   }
@@ -123,9 +131,27 @@ self.addEventListener('fetch', (event) => {
   const sameOrigin = url.origin === self.location.origin;
   const isCdn = url.hostname === 'cdn.jsdelivr.net';
   if (!sameOrigin && !isCdn) return;
+
+  if (sameOrigin) {
+    // App files: network first, cache when offline.
+    event.respondWith((async () => {
+      const cache = await caches.open(VERSION);
+      try {
+        const res = await fetch(req, { cache: 'no-cache' });
+        if (res.ok && res.type === 'basic') cache.put(req, res.clone());
+        return res;
+      } catch (e) {
+        const cached = await cache.match(req, { ignoreSearch: true });
+        return cached || new Response('', { status: 504, statusText: 'Offline' });
+      }
+    })());
+    return;
+  }
+
+  // CDN libraries have fixed versions in their URLs: cache first.
   event.respondWith((async () => {
     const cache = await caches.open(VERSION);
-    const cached = await cache.match(req, { ignoreSearch: sameOrigin });
+    const cached = await cache.match(req);
     if (cached) return cached;
     try {
       const res = await fetch(req);
