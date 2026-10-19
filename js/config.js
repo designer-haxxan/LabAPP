@@ -5,7 +5,7 @@ export const CONFIG = {
   // one origin (one IndexedDB / LocalStorage / Cache Storage), so every app must use its own unique APP_ID.
   APP_ID: 'disterp',
   // Keep equal to the cache version in service-worker.js (VERSION) when you release.
-  APP_VERSION: '2.0.3',
+  APP_VERSION: '2.0.4',
   SCHEMA_VERSION: 1,
   BACKUP_VERSION: 1,
   // Login API: POST {AUTH_API_BASE}/login. The server does not send CORS headers, so the app must be

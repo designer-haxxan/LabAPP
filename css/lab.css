@@ -232,7 +232,7 @@ button.list-row { cursor: pointer; }
   #print-area { display: block !important; position: static; color: #000; background: none; padding: 12mm; font-family: Arial, Helvetica, sans-serif; font-size: 11pt; }
   #print-area * { box-shadow: none !important; text-shadow: none !important; }
   /* Lab reports: the letterhead image (header + footer bar) is printed on every page behind the text. */
-  .pr-page.pr-lh { margin: -12mm; width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 74mm 18mm 30mm; }
+  .pr-page.pr-lh { margin: -12mm; width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 54mm 18mm 40mm; }
   .pr-lh-bg { position: fixed; top: 0; left: 0; width: 210mm; height: 297mm; z-index: -1; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .pr-page { position: relative; page-break-after: always; break-after: page; }
   .pr-page:last-child { page-break-after: auto; break-after: auto; }
