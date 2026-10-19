@@ -5,7 +5,7 @@ import { esc, fmtDate, fmtNum, uuid, num, debounce, round2, today, monthStart } 
 import { getSettings } from '../core/settings.js';
 import { money, moneyPlain, dateFilter, rangeFor, bindDateFilter, pager } from '../core/views.js';
 import { billBadge, reportBadge } from '../core/badges.js';
-import { labHeader, printHtml } from '../core/print.js';
+import { printHtml } from '../core/print.js';
 import { getBundle, createBill, collectPayment, voidBill } from '../services/data.js';
 import { pickPatient, openPatientForm } from './patients.js';
 import * as Auth from '../services/auth.js';
@@ -18,7 +18,9 @@ export function receiptHtml(bill, payments = []) {
   const cur = getSettings().currency;
   const rows = bill.lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.name)}${l.kind === 'group' ? ' <em>(package)</em>' : ''}</td><td class="r">${fmtNum(l.price)}</td></tr>`).join('');
   const paid = payments.filter((p) => p.amount > 0).map((p) => `<tr><td>${esc(fmtDate(p.date))}</td><td>${esc(PAY_METHODS[p.method] || p.method)}</td><td class="r">${fmtNum(p.amount)}</td></tr>`).join('');
-  return `${labHeader()}
+  // Receipts use the same letterhead page design as reports.
+  return `<section class="pr-page pr-lh">
+    <img class="pr-lh-bg" src="assets/letterhead.png" alt="">
     <div class="pr-title">${bill.status === 'void' ? 'VOID BILL' : 'BILL / RECEIPT'}</div>
     <table class="pr-meta"><tr><td>Bill no.</td><td>${esc(bill.number)}</td><td>Date</td><td>${esc(fmtDate(bill.date))}</td></tr>
       <tr><td>Patient</td><td>${esc(bill.patient.name)}</td><td>MR no.</td><td>${esc(bill.patient.mrNo)}</td></tr>
@@ -35,7 +37,8 @@ export function receiptHtml(bill, payments = []) {
     </table>
     ${paid ? `<table class="pr-items pr-small-table"><thead><tr><th>Date</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>${paid}</tbody></table>` : ''}
     ${bill.voidReason ? `<p class="pr-small">Void reason: ${esc(bill.voidReason)}</p>` : ''}
-    <p class="pr-small pr-center">Results will be issued on the report. Keep this receipt. ${esc(getSettings().lab.reportFooter || '')}</p>`;
+    <p class="pr-small pr-center">Results will be issued on the report. Keep this receipt. ${esc(getSettings().lab.reportFooter || '')}</p>
+  </section>`;
 }
 
 // ---------- Router ----------
