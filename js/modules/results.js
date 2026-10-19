@@ -177,7 +177,5 @@ function reportSheet(r, bill) {
       <tr><td>Sample</td><td>${esc(r.sampleType || '—')}</td><td>Department</td><td>${esc(r.department)}</td></tr></table>
     ${r.params.length ? `<table class="pr-items"><thead><tr><th>Parameter</th><th class="r">Result</th><th>Unit</th><th>Reference</th><th class="c">Flag</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No values entered</td></tr>'}</tbody></table>` : ''}
     ${r.remarks ? `<div class="pr-remarks"><b>${r.params.length ? 'Interpretation' : 'Result'}:</b> ${esc(r.remarks).replace(/\n/g, '<br>')}</div>` : ''}
-    <div class="pr-sign"><div>${esc(r.enteredBy ? 'Entered by ' + r.enteredBy : '')}</div>
-      <div>${esc(r.verifiedBy ? 'Verified by ' + r.verifiedBy : lab.signatory)}</div></div>
   </section>`;
 }
