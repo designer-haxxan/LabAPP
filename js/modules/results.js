@@ -166,12 +166,10 @@ function reportPage(list, bill) {
   const patient = bill?.patient || {};
   const single = list.length === 1;
   const first = list[0];
-  const prelim = list.some((r) => r.status !== 'verified');
   const title = single ? first.testName : first.department;
   // The letterhead image (lab name, address, footer bar) is the page design; the report text sits inside its frame.
   return `<section class="pr-page pr-lh">
     <img class="pr-lh-bg" src="assets/letterhead.png" alt="">
-    ${prelim ? '<div class="pr-watermark">PRELIMINARY</div>' : ''}
     <div class="pr-title">LABORATORY REPORT · ${esc(title.toUpperCase())}</div>
     ${lab.reportFooter ? `<div class="pr-note">${esc(lab.reportFooter)}</div>` : ''}
     <table class="pr-meta"><tr><td>Patient</td><td><b>${esc(patient.name || '')}</b></td><td>MR no.</td><td>${esc(patient.mrNo || '')}</td></tr>
