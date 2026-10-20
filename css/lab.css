@@ -255,6 +255,10 @@ button.list-row { cursor: pointer; }
   .pr-totals .grand td { font-weight: 800; font-size: 12pt; border-top: 2px solid #111; border-bottom: 2px solid #111; }
   .pr-h { font-size: 11pt; margin: 14px 0 4px; }
   .pr-remarks { border: 1px solid #888; padding: 8px; margin: 10px 0; font-size: 10.5pt; min-height: 40px; }
+  /* Several tests on one page: each test is kept together and separated from the next. */
+  .pr-test { page-break-inside: avoid; break-inside: avoid; margin-bottom: 12px; }
+  .pr-test-title { font-weight: 800; font-size: 10.5pt; border-bottom: 1px solid #111; margin: 8px 0 4px; }
+  .pr-test-title span { font-weight: 400; font-size: 9pt; color: #333; }
   .pr-sign { display: flex; justify-content: space-between; gap: 40px; margin-top: 46px; font-size: 10pt; }
   .pr-sign div { flex: 1; text-align: center; }
   .pr-note { font-size: 9pt; font-style: italic; color: #333; margin: 2px 0 4px; }

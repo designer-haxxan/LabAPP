@@ -150,14 +150,42 @@ async function renderEntry(el, id, ctx) {
 // ---------- Printable report ----------
 export function printReports(list, bill) {
   if (!list.length) return UI.toast('Nothing to print yet. Enter results first.', 'warning');
-  const html = list.map((r) => reportSheet(r, bill)).join('');
+  // Tests of the same department share one page (e.g. Hepatitis B and C, or several serology tests).
+  const groups = [];
+  for (const r of list) {
+    const g = groups.find((x) => x.department === r.department);
+    if (g) g.reports.push(r); else groups.push({ department: r.department, reports: [r] });
+  }
+  const html = groups.map((g) => reportPage(g.reports, bill)).join('');
   printHtml(html, `Report ${bill?.number || ''}`);
 }
 
-function reportSheet(r, bill) {
+// One printed page: letterhead, patient details once, then one block per test.
+function reportPage(list, bill) {
   const lab = getSettings().lab;
   const patient = bill?.patient || {};
-  const prelim = r.status !== 'verified';
+  const single = list.length === 1;
+  const first = list[0];
+  const prelim = list.some((r) => r.status !== 'verified');
+  const title = single ? first.testName : first.department;
+  // The letterhead image (lab name, address, footer bar) is the page design; the report text sits inside its frame.
+  return `<section class="pr-page pr-lh">
+    <img class="pr-lh-bg" src="assets/letterhead.png" alt="">
+    ${prelim ? '<div class="pr-watermark">PRELIMINARY</div>' : ''}
+    <div class="pr-title">LABORATORY REPORT · ${esc(title.toUpperCase())}</div>
+    ${lab.reportFooter ? `<div class="pr-note">${esc(lab.reportFooter)}</div>` : ''}
+    <table class="pr-meta"><tr><td>Patient</td><td><b>${esc(patient.name || '')}</b></td><td>MR no.</td><td>${esc(patient.mrNo || '')}</td></tr>
+      <tr><td>Age / Gender</td><td>${patient.age !== '' && patient.age != null ? esc(patient.age) + ' yrs' : '—'} / ${esc(genderLabel(patient.gender) || '—')}</td><td>Bill no.</td><td>${esc(first.billNumber)}</td></tr>
+      <tr><td>Referred by</td><td>${bill?.doctorName ? esc(bill.doctorName) : 'Self'}</td><td>Report date</td><td>${esc(fmtDate(first.date))}</td></tr>
+      ${single
+        ? `<tr><td>Sample</td><td>${esc(first.sampleType || '—')}</td><td>Department</td><td>${esc(first.department)}</td></tr>`
+        : `<tr><td>Department</td><td colspan="3">${esc(first.department)}</td></tr>`}</table>
+    ${list.map((r) => reportBlock(r, patient, single)).join('')}
+  </section>`;
+}
+
+// The results of one test on the page.
+function reportBlock(r, patient, single) {
   const rows = r.params.map((p) => {
     const v = r.values[p.id];
     if (v === undefined || v === '') return '';
@@ -165,17 +193,9 @@ function reportSheet(r, bill) {
     const shown = f === 'H' || f === 'L' ? `<b>${esc(v)}</b>` : esc(v);
     return `<tr><td>${esc(p.name)}</td><td class="r">${shown}</td><td>${esc(p.unit || '')}</td><td>${esc(refText(p, patient) || '')}</td><td class="c">${f ? `<b>${f === 'N' ? '' : f}</b>` : ''}</td></tr>`;
   }).join('');
-  // The letterhead image (lab name, address, footer bar) is the page design; the report text sits inside its frame.
-  return `<section class="pr-page pr-lh">
-    <img class="pr-lh-bg" src="assets/letterhead.png" alt="">
-    ${prelim ? '<div class="pr-watermark">PRELIMINARY</div>' : ''}
-    <div class="pr-title">LABORATORY REPORT · ${esc(r.testName.toUpperCase())}</div>
-    ${lab.reportFooter ? `<div class="pr-note">${esc(lab.reportFooter)}</div>` : ''}
-    <table class="pr-meta"><tr><td>Patient</td><td><b>${esc(patient.name || '')}</b></td><td>MR no.</td><td>${esc(patient.mrNo || '')}</td></tr>
-      <tr><td>Age / Gender</td><td>${patient.age !== '' && patient.age != null ? esc(patient.age) + ' yrs' : '—'} / ${esc(genderLabel(patient.gender) || '—')}</td><td>Bill no.</td><td>${esc(r.billNumber)}</td></tr>
-      <tr><td>Referred by</td><td>${bill?.doctorName ? esc(bill.doctorName) : 'Self'}</td><td>Report date</td><td>${esc(fmtDate(r.date))}</td></tr>
-      <tr><td>Sample</td><td>${esc(r.sampleType || '—')}</td><td>Department</td><td>${esc(r.department)}</td></tr></table>
+  return `<div class="pr-test">
+    ${single ? '' : `<div class="pr-test-title">${esc(r.testName)}${r.sampleType ? ` <span>· Sample: ${esc(r.sampleType)}</span>` : ''}</div>`}
     ${r.params.length ? `<table class="pr-items"><thead><tr><th>Parameter</th><th class="r">Result</th><th>Unit</th><th>Reference</th><th class="c">Flag</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No values entered</td></tr>'}</tbody></table>` : ''}
     ${r.remarks ? `<div class="pr-remarks"><b>${r.params.length ? 'Interpretation' : 'Result'}:</b> ${esc(r.remarks).replace(/\n/g, '<br>')}</div>` : ''}
-  </section>`;
+  </div>`;
 }
